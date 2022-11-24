@@ -52,19 +52,8 @@ int main (int argc, char** argv){
 
                 char *file_name = dir->d_name;
 
-                if (file_name[0] == '.') {
-                    if(file_name[1] != '.' && file_name[1] != '\0') {   //filter "." and ".."
-
-                        fn_list = realloc(fn_list, (fn_size + 1) * sizeof(*fn_list));
-                        fn_size++;
-
-                        fn_list[fn_index] = malloc(strlen(file_name) + 1);
-                        strcpy(fn_list[fn_index], file_name);
-                        fn_index++;
-                    }
-
-                } else {
-                    
+                if (file_name[0] != '.') {
+                   
                     fn_list = realloc(fn_list, (fn_size + 1) * sizeof(*fn_list));
                     fn_size++;
 
@@ -94,18 +83,7 @@ int main (int argc, char** argv){
 
                 char *file_name = dir->d_name;
 
-                if (file_name[0] == '.') {
-                    if(file_name[1] != '.' && file_name[1] != '\0') {   //filter "." and ".."
-
-                        fn_list = realloc(fn_list, (fn_size + 1) * sizeof(*fn_list));
-                        fn_size++;
-
-                        fn_list[fn_index] = malloc(strlen(file_name) + 1);
-                        strcpy(fn_list[fn_index], file_name);
-                        fn_index++;
-                    }
-
-                } else {
+                if (file_name[0] != '.') {
                     
                     fn_list = realloc(fn_list, (fn_size + 1) * sizeof(*fn_list));
                     fn_size++;

@@ -1,8 +1,0 @@
-{
-  "files.associations": {
-    "dirent.h": "c",
-    "limits.h": "c",
-    "string.h": "c",
-    "errno.h": "c"
-  }
-}

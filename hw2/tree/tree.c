@@ -29,7 +29,7 @@ void printDirectoryTree (char* base_path, int level) {
 
     for (int i = 0; i < fn_size; i++) {
 
-        if(strcmp(".", fn_list[i]->d_name) != 0 && strcmp("..", fn_list[i]->d_name) != 0) {
+        if(fn_list[i]->d_name[0] != '.') {
 
             if(fn_list[i]->d_type == DT_DIR) {
 
