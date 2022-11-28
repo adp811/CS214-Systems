@@ -41,6 +41,8 @@ volatile sig_atomic_t pid;
 volatile sig_atomic_t SIGINT_flag;
 volatile sig_atomic_t NEW_LINE;
 
+volatile sig_atomic_t EXIT_CD_FLAG;
+
 typedef void handler_t(int);
 
 
@@ -132,6 +134,7 @@ void delete_job_pid (job_node **head, pid_t processID) {
     if((*head)->processID == processID) {
         temp = *head;    
         *head = (*head)->next;
+        free(temp->command);
         free(temp);
 
     } else {
@@ -141,6 +144,7 @@ void delete_job_pid (job_node **head, pid_t processID) {
                 temp = curr->next;
                 //node will be disconnected from the linked list.
                 curr->next = curr->next->next;
+                free(temp->command);
                 free(temp);
                 break;
 
@@ -149,37 +153,6 @@ void delete_job_pid (job_node **head, pid_t processID) {
 
             }
         }
-    }
-
-    return;
-}
-
-void delete_job_gpid (job_node **head, pid_t groupProcessID) {
-
-    job_node *temp;
-
-    while(*head != NULL && (*head)->groupProcessID == groupProcessID) {
-        temp = *head;
-        *head = (*head)->next;
-        free(temp);
-
-    }
-
-    job_node *curr = *head;    
-
-    if(curr != NULL) {
-        while(curr->next != NULL) {
-            if(curr->next->groupProcessID == groupProcessID) {
-                temp = curr->next;
-                curr->next = curr->next->next;
-                free(temp);
-
-            } else {
-                curr = curr->next;
-
-            }
-        }
-
     }
 
     return;
@@ -233,10 +206,34 @@ char *formatJobInfo (int toggle, int val) {
     
 }
 
+int jobs_list_size (job_node *head) {
+
+    int count = 0;
+    job_node *curr = head;
+
+    while(curr != NULL) {
+        count += 1;
+        curr = curr->next;
+    }
+
+    return count;
+}
+
+void free_jobs_list (job_node *head) {
+
+   job_node *temp;
+   while (head != NULL) {
+       temp = head;
+       head = head->next;
+       free(temp->command);
+       free(temp);
+    }
+}
+
 void list_jobs (job_node *head) {
+
     job_node *curr = head;
     while(curr != NULL) {
-
         printf("[%d] %ld %s %s %s --- gpid: %ld\n",
             curr->jobID,
             (long)curr->processID,
@@ -251,85 +248,7 @@ void list_jobs (job_node *head) {
 
 
 /* -------------------------------------------------------------------------- */
-/*                                SHELL UTILITY                               */
-/* -------------------------------------------------------------------------- */
-
-
-char *read_line () {    /* read line from shell input */
-
-    char *buffer = NULL;
-    size_t buff_size; 
-
-    if (getline(&buffer, &buff_size, stdin) == -1){
-        if (feof(stdin)) {
-            exit(0);
-        } else  {
-            perror("fatal: getline() read error");
-            exit(0);
-        }
-    }
-
-    return buffer;
-}
-
-char **parse_line (char *line) {
-
-    char **tokens = NULL;
-
-    int tks_index = 0;
-    int tks_size = 0;
-
-    char *token;
-
-    token = strtok(line, " \t\r\n\a");
-
-    while (token != NULL) {
-
-        tokens = realloc(tokens, (tks_size + 1) * sizeof(*tokens));
-        tks_size++;
-
-        // error check malloc here
-
-        tokens[tks_index] = token;
-        tks_index++;
-
-        token = strtok(NULL, " \t\r\n\a");
-    }
-    
-    tokens = realloc(tokens, (tks_size + 1) * sizeof(*tokens));
-    tokens[tks_index] = NULL;
-
-    return tokens;
-
-}
-
-int parse_background (char **args) {
-
-    int idx = 0;
-    while(args[idx] != NULL) {
-
-        char *arg = args[idx];
-        char arg_last = arg[strlen(arg) - 1];
-        
-        if (arg_last == '&' && args[idx + 1] == NULL) {
-            if (strlen(arg) == 1) {
-                args[idx] = NULL;
-                return 1;
-            } else {
-                arg[strlen(arg) - 1] = '\0';
-                return 1;
-            } 
-        }
-
-        idx++;
-    }
-
-    return 0;
-}
-
-
-/* -------------------------------------------------------------------------- */
-/*                   SHELL EXEC AND PROCESSES + SIG HANDLERS                  */
+/*                   SHELL EXEC, UTIL, PROCESSES, BLT + SIG HANDLERS                  */
 /* -------------------------------------------------------------------------- */
 
 
@@ -398,22 +317,53 @@ void sigtstp_handler () {
 }
 
 
-/* -------------------------------------------------------------------------- */
-/*                           SHELL BUILT IN COMMANDS                          */
-/* -------------------------------------------------------------------------- */
+/* ------------------------- SHELL BUILT IN COMMANDS ------------------------ */
 
 
-void exit_blt () {
+int exit_blt (job_node **head) {
 
-    /* Exit the shell. 
+    int num_jobs = jobs_list_size(*head);
 
-    The shell should also exit if the user hits ctrl-d on an empty input line.
+    if (num_jobs == 0) {
+        return 0;
+    }
 
-    When the shell exits, it should first send SIGHUP followed by SIGCONT to any stopped
-    jobs, and SIGHUP to any running jobs. */
+    int *pid_list = malloc(num_jobs * sizeof(int));
+    if (pid_list == NULL) {
+        printf("malloc failed on exit\n");
+        return -1;
+    }
 
-    exit(EXIT_SUCCESS);
+    int i = 0;
+    job_node *curr = *head;
 
+    while(curr != NULL) {
+        int pid_c = curr->processID;
+        
+        if(curr->currentStatus == 0) { /* running (1) */
+            pid_list[i] = pid_c;
+        } else { /* stopped (-1) */
+            pid_list[i] = -(pid_c);
+        }
+
+        curr = curr->next;
+        i += 1;        
+    }
+
+    for(int j = 0; j < num_jobs; j++) {
+        int pid_e = pid_list[j];
+        if (pid_e > 0) { /* running */
+            kill(-(pid_e), SIGHUP);
+        } else { /* stopped */
+            kill(pid_e, SIGHUP);
+            kill(pid_e, SIGCONT);
+        }
+    }
+
+    free_jobs_list(job_list);
+    free(pid_list);
+
+    return 0;
 }
 
 int cd_blt (char** args) {
@@ -538,9 +488,9 @@ int fg_blt (char **args) {
         sigemptyset(&mask);
         sigaddset(&mask, SIGCHLD);
 
-        set_handler(SIGCHLD, sigchld_handler);
-        set_handler(SIGINT, sigint_handler);
-        set_handler(SIGTSTP, sigtstp_handler);
+        // set_handler(SIGCHLD, sigchld_handler);
+        // set_handler(SIGINT, sigint_handler);
+        // set_handler(SIGTSTP, sigtstp_handler);
 
         sigprocmask(SIG_BLOCK, &mask, &prev);
 
@@ -569,13 +519,95 @@ int fg_blt (char **args) {
 
         if (SIGINT_flag) {
             printf("[%d] %ld terminated by signal 2\n",
-                pid_fg->jobID, (long)pid_fg->processID);
+                job_id, (long)pid);
         }
 
         sigprocmask(SIG_SETMASK, &prev, NULL);
     }
 
     return 1;
+}
+
+
+/* ------------------------------ SHELL UTILITY ----------------------------- */
+
+
+char *read_line () {    /* read line from shell input */
+
+    char *buffer = NULL;
+    size_t buff_size; 
+
+    if (getline(&buffer, &buff_size, stdin) == -1){
+        if (feof(stdin)) {
+            exit_blt(&job_list);
+            EXIT_CD_FLAG = 1;
+            return NULL;
+        } else  {
+            perror("fatal: getline() read error");
+            return NULL;
+        }
+    }
+
+    if (strcmp(buffer, "\n") == 0) { // nothing entered
+        return NULL;
+    }
+
+    return buffer;
+}
+
+char **parse_line (char *line) {
+
+    char **tokens = NULL;
+
+    int tks_index = 0;
+    int tks_size = 0;
+
+    char *token;
+
+    token = strtok(line, " \t\r\n\a");
+
+    while (token != NULL) {
+
+        tokens = realloc(tokens, (tks_size + 1) * sizeof(*tokens));
+        tks_size++;
+
+        // error check malloc here
+
+        tokens[tks_index] = token;
+        tks_index++;
+
+        token = strtok(NULL, " \t\r\n\a");
+    }
+    
+    tokens = realloc(tokens, (tks_size + 1) * sizeof(*tokens));
+    tokens[tks_index] = NULL;
+
+    return tokens;
+
+}
+
+int parse_background (char **args) {
+
+    int idx = 0;
+    while(args[idx] != NULL) {
+
+        char *arg = args[idx];
+        char arg_last = arg[strlen(arg) - 1];
+        
+        if (arg_last == '&' && args[idx + 1] == NULL) {
+            if (strlen(arg) == 1) {
+                args[idx] = NULL;
+                return 1;
+            } else {
+                arg[strlen(arg) - 1] = '\0';
+                return 1;
+            } 
+        }
+
+        idx++;
+    }
+
+    return 0;
 }
 
 
@@ -590,6 +622,7 @@ int execute_sh_bt (char **args) {
         cd_blt(args);
 
     } else if (strcmp(command, "exit") == 0) {
+        if (exit_blt(&job_list) == 0) return 0;
 
     } else if (strcmp(command, "jobs") == 0) {
         list_jobs(job_list);
@@ -602,9 +635,6 @@ int execute_sh_bt (char **args) {
 
     } else if (strcmp(command, "bg") == 0) {    
         bg_blt(args);
-
-    } else if (strcmp(command, "test") == 0) {
-        printf("%ld\n", (long)pid);
     
     } else {  
         return -1; /* built-in not called, execute shell command fg */
@@ -622,9 +652,9 @@ int execute_sh_fg (char **args, int isBackground) {
     sigemptyset(&mask);
     sigaddset(&mask, SIGCHLD);
 
-    set_handler(SIGCHLD, sigchld_handler);
-    set_handler(SIGINT, sigint_handler);
-    set_handler(SIGTSTP, sigtstp_handler);
+    // set_handler(SIGCHLD, sigchld_handler);
+    // set_handler(SIGINT, sigint_handler);
+    // set_handler(SIGTSTP, sigtstp_handler);
 
     sigprocmask(SIG_BLOCK, &mask, &prev);
 
@@ -698,13 +728,13 @@ int execute_sh_fg (char **args, int isBackground) {
     return 1; 
 }
 
-/* MAIN */
+
+/* -------------------------------------------------------------------------- */
+/*                                    MAIN                                    */
+/* -------------------------------------------------------------------------- */
+
 
 int main (int argc, char** argv) {
-
-    printf("shell pid: %d\n", getpid());
-    printf("shell pgid: %d\n", getpgid(getpid()));
-    printf("shell tc pgid: %d\n", tcgetpgrp(fileno(stdin)));
 
     char *shell_command;
     char **args;
@@ -712,25 +742,40 @@ int main (int argc, char** argv) {
     job_list = NULL;
     JOB_ID_COUNT = -1;
 
-    int run_sh;
+    int run_sh = 1;
+    EXIT_CD_FLAG = 0;
+
+    set_handler(SIGCHLD, sigchld_handler);
+    set_handler(SIGINT, sigint_handler);
+    set_handler(SIGTSTP, sigtstp_handler);
 
     do {
         fflush(stdout);
         printf("> ");
 
-        shell_command = read_line();
+        shell_command = read_line();     
+
+        if (shell_command == NULL && EXIT_CD_FLAG == 0) {
+            continue;
+        } else if (shell_command == NULL && EXIT_CD_FLAG == 1) {
+            break;
+        }
+
         args = parse_line(shell_command);
         int bg = parse_background(args);
+        int exec_blt = execute_sh_bt(args);
 
-        if (execute_sh_bt(args) == -1) {
-            run_sh = execute_sh_fg(args, bg);   
-        } else {
-            run_sh = 1;
-        }
-               
+        if (exec_blt == 0) {
+            run_sh = 0;
+        } else if (exec_blt == -1) {
+            run_sh = execute_sh_fg(args, bg);
+        } 
+        
         free(shell_command);
         free(args);
         
     } while (run_sh);
+
+    exit(EXIT_SUCCESS);
 
 }
