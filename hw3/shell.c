@@ -228,22 +228,23 @@ void free_jobs_list (job_node *head) {
        free(temp->command);
        free(temp);
     }
+    return;
 }
 
 void list_jobs (job_node *head) {
 
     job_node *curr = head;
     while(curr != NULL) {
-        printf("[%d] %ld %s %s %s --- gpid: %ld\n",
+        printf("[%d] %ld %s %s %s\n",
             curr->jobID,
             (long)curr->processID,
             formatJobInfo(1, curr->currentStatus),
             curr->command,
-            formatJobInfo(0, curr->isBackground),
-            (long)curr->groupProcessID);
+            formatJobInfo(0, curr->isBackground));
 
         curr = curr->next;
     }
+    return;
 }
 
 
@@ -269,17 +270,12 @@ handler_t *set_handler(int sig, handler_t *handler) {
     return prev_action.sa_handler;
 }
 
-void sigchld_handler(int sig)
-{
+void sigchld_handler(int sig) {
+
     int status;
     pid = waitpid(-1, &status, WUNTRACED);
 
-    if (pid < 0) {
-        fflush(stdout);
-        write(STDOUT_FILENO, "waitpid error, SIGCHLD handler\n", 31);
-    
-    } else {
-
+    if (pid > 0) {
         if (WIFEXITED(status)) { /* normal exit */
             job_node *job = get_job_pid(&job_list, pid);
             if (job->isBackground == 1) {
@@ -296,9 +292,13 @@ void sigchld_handler(int sig)
         } else if (WIFSTOPPED(status)) { /* SIGTSTP */
             job_node *job = get_job_pid(&job_list, pid);
             modify_status(&job_list, job->jobID, 1);
-        }
 
+        } else if (WIFCONTINUED(status)) { /* SIGCONT */
+            return;
+        }
     }
+    
+    return;
 }
 
 void sigint_handler () {
@@ -321,6 +321,12 @@ void sigtstp_handler () {
 
 
 int exit_blt (job_node **head) {
+
+    sigset_t mask, prev;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &mask, &prev);
 
     int num_jobs = jobs_list_size(*head);
 
@@ -447,18 +453,13 @@ int bg_blt (char **args) {
 
         sigemptyset(&mask);
         sigaddset(&mask, SIGCHLD);
-
-        set_handler(SIGCHLD, sigchld_handler);
-        set_handler(SIGINT, sigint_handler);
-        set_handler(SIGTSTP, sigtstp_handler);
-
         sigprocmask(SIG_BLOCK, &mask, &prev);
 
         if (pid_fg->currentStatus == 1 && pid_fg->isBackground == 0){
             /* suspended process in foreground */
             modify_bgfg(&job_list, pid_fg->jobID, 1);
             modify_status(&job_list, pid_fg->jobID, 0);
-            kill(pid_fg->processID, SIGCONT);
+            kill(-(pid_fg->processID), SIGCONT);
 
         } else {
             printf("bg error, job criteria not met\n");
@@ -487,17 +488,12 @@ int fg_blt (char **args) {
 
         sigemptyset(&mask);
         sigaddset(&mask, SIGCHLD);
-
-        // set_handler(SIGCHLD, sigchld_handler);
-        // set_handler(SIGINT, sigint_handler);
-        // set_handler(SIGTSTP, sigtstp_handler);
-
         sigprocmask(SIG_BLOCK, &mask, &prev);
 
         if (pid_fg->isBackground == 0 && pid_fg->currentStatus == 1) {
             /* suspended job in foreground */
-            kill(pid_fg->processID, SIGCONT);
             modify_status(&job_list, pid_fg->jobID, 0);
+            kill(-(pid_fg->processID), SIGCONT);
 
         } else if (pid_fg->isBackground == 1 && pid_fg->currentStatus == 0) {
             /* running job in background */
@@ -541,14 +537,17 @@ char *read_line () {    /* read line from shell input */
         if (feof(stdin)) {
             exit_blt(&job_list);
             EXIT_CD_FLAG = 1;
+            free(buffer);
             return NULL;
         } else  {
             perror("fatal: getline() read error");
+            free(buffer);
             return NULL;
         }
     }
 
     if (strcmp(buffer, "\n") == 0) { // nothing entered
+        free(buffer);
         return NULL;
     }
 
@@ -651,11 +650,6 @@ int execute_sh_fg (char **args, int isBackground) {
 
     sigemptyset(&mask);
     sigaddset(&mask, SIGCHLD);
-
-    // set_handler(SIGCHLD, sigchld_handler);
-    // set_handler(SIGINT, sigint_handler);
-    // set_handler(SIGTSTP, sigtstp_handler);
-
     sigprocmask(SIG_BLOCK, &mask, &prev);
 
     child = fork();
