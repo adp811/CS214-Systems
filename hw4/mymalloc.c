@@ -39,17 +39,21 @@ static void *find_fit_t (int fit_t, size_t f_size) {
     
         case 0: /* first fit algorithm */
 
-            bp = root_ptr;
-            
-            printf("\nBLOCK PTR 0 :-- %p\n", bp);
-            printf("\nBLOCK HDR 0 :-- %p\n", HDRP(bp));
-            printf("BLOCK ALLOCATED? 0 : -- %lu\n", GET_ALLOC(HDRP(bp)));
+            bp = root_ptr;    
 
-            // while(GET_ALLOC(HDRP(bp)) != 0) {
-            //     if(f_size <= GET_SIZE(HDRP(bp))) return bp;
-            //     else bp = NEXT_FP(bp);
+            while(GET_ALLOC(HDRP(bp)) != 1) {
+                if(f_size <= GET_SIZE(HDRP(bp))) return bp;
+                else bp = NEXT_FP(bp);
+            }  
+
+            // printf("\nBLOCK PTR 0 :-- %p\n", bp);
+            // printf("\nBLOCK HDR 0 :-- %p\n", HDRP(bp));
+            // printf("BLOCK ALLOCATED? 0 : -- %lu\n", GET_ALLOC(HDRP(bp)));
+
+            // for (free_bp = root_ptr; free_bp != NULL; free_bp = NEXT_FP(free_bp)) {
+            //     if (!GET_ALLOC(HDRP(free_bp)) && (f_size <= GET_SIZE(HDRP(free_bp)))) return free_bp;
             // }
-            
+                
             break;
         
         default:
@@ -60,6 +64,35 @@ static void *find_fit_t (int fit_t, size_t f_size) {
     return NULL; /* no fit found */
 }
 
+static void *coalesce (void *ptr)
+{
+    size_t alloc_prev = GET_ALLOC(FTRP(PREV_BLKP(ptr)));
+    size_t alloc_next = GET_ALLOC(HDRP(NEXT_BLKP(ptr))); 
+
+    size_t size_curr = GET_SIZE(HDRP(ptr));
+
+    if (alloc_prev == 1 && alloc_next == 1) {           /* - C - */
+
+    } else if (alloc_prev == 0 && alloc_next == 0) {    /* F C F */
+
+    } else if (alloc_prev == 1 && alloc_next == 0) {    /* - C F */
+
+    } else if (alloc_prev == 0 && alloc_next == 1) {    /* F C - */
+
+    }
+
+    return NULL;
+}
+
+static void manage_root_ptr (int toggle, void *ptr) /* toggle (1/0 -:- remove/add) */
+{
+    return;
+}
+
+
+/* ----------------------- MEMORY MANAGEMENT FUNCTIONS ---------------------- */
+
+
 void* mymalloc(size_t size) 
 {
     void *bp = NULL;
@@ -68,56 +101,110 @@ void* mymalloc(size_t size)
     if (size <= DSIZE) aligned_size = 2 * DSIZE;
     else aligned_size = ALIGN(size);
 
-    printf("\nALIGNED SIZE :-- %zu\n", aligned_size);
+    printf("\n\nALIGNED SIZE :-- %zu\n", aligned_size);
 
     bp = find_fit_t(FIND_T_FLAG, aligned_size);
 
     if (bp != NULL) {
 
-       // printf("BLOCK PTR :--%p\n", bp);
-       // size_t block_size = GET_SIZE(HDRP(bp));
-       // printf("BLOCK SIZE :--%zu\n", block_size);
+        size_t block_size = GET_SIZE(HDRP(bp));
+
+        printf("\nFIT BLOCK ADR :-- %p <--> SIZE: %lu\n", bp, block_size);
+
+        if ((block_size - aligned_size) >= MINBLOCK) { /* split */
+
+            PUT(HDRP(bp), PACK(aligned_size, 1));
+            PUT(FTRP(bp), PACK(aligned_size, 1));
+
+            printf("\nPLACED AT BLOCK :-- %p <--> HDR: %p <--> FTR: %p <--> SIZE: [%lu, %lu]\n",
+                bp, HDRP(bp), FTRP(bp), GET_SIZE(HDRP(bp)), GET_SIZE(FTRP(bp)));
+
+            /* remove prev and next ptrs */
+            
+            void *n_bp = NEXT_BLKP(bp);
+
+            PUT(HDRP(n_bp), PACK((block_size - aligned_size) - (2 * METASIZE), 0));
+            PUT(FTRP(n_bp), PACK((block_size - aligned_size) - (2 * METASIZE), 0));
+
+            printf("\n(SPLIT) NEXT FREE BLOCK :-- %p <--> HDR: %p <--> FTR: %p <--> SIZE: [%lu, %lu]\n",
+            n_bp, HDRP(n_bp), FTRP(n_bp), GET_SIZE(HDRP(n_bp)), GET_SIZE(FTRP(n_bp)));
+
+            root_ptr = n_bp;
+            //coalesce
+
+        } else {
+
+            PUT(HDRP(bp), PACK(block_size, 1));
+            PUT(FTRP(bp), PACK(block_size, 1));
+
+            printf("\nPLACED AT BLOCK :-- %p <--> HDR: %p <--> FTR: %p <--> SIZE: [%lu, %lu]\n",
+                bp, HDRP(bp), FTRP(bp), GET_SIZE(HDRP(bp)), GET_SIZE(FTRP(bp)));
+
+        }
 
     } else return NULL;
 
-    return NULL; /* testing */
+    return bp; /* testing */
+}
+
+void myfree(void *ptr)
+{
+    if (ptr == 0) 
+        return;
+
+    size_t block_size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), PACK(block_size, 0));
+    PUT(FTRP(ptr), PACK(block_size, 0));
+
+    //coalesce
 }
 
 void myinit(int allocAlg)
 {
-    //setup heap
+    /* malloc heap */
     heap_ptr = (char *) malloc(1 * MB);
+
     if (heap_ptr == NULL) {
         printf("Fatal Error: malloc heap failed, exiting...\n");
         exit(EXIT_FAILURE);
     }
 
-    heap_start = heap_ptr;
-
-    printf("\nHEAP ADDRESS STARTING AT :-- %p\n", heap_start);
-
-    //heap header + footer
+    /* heap header + footer */
     PUT(heap_ptr, 0);
-    PUT(heap_ptr + (1 * METASIZE), PACK(DSIZE, 1));
-    PUT(heap_ptr + (2 * METASIZE), PACK(DSIZE, 1));
+    PUT(heap_ptr + (1 * METASIZE), PACK(0, 1));  
+    PUT(heap_ptr + (2 * METASIZE), PACK(0, 1));                                                   
+    PUT(heap_ptr + ((1 * MB) - (1 * METASIZE)), PACK(0, 1));  
 
-    //heap epilogue
-    PUT((heap_ptr + (1 * MB)) - 4, PACK(0, 1));
-        
-    //set free root pointer and heap pointer
-    heap_ptr = heap_ptr + (METASIZE * 2);
-    root_ptr = heap_ptr + (METASIZE * 2);
+    /* init free block */
+    void *free_block_init = NEXT_BLKP(heap_ptr + (2 * METASIZE));
+    
+    PUT(HDRP(free_block_init), PACK((1 * MB) - (6 * METASIZE), 0));
+    PUT(FTRP(free_block_init), PACK((1 * MB) - (6 * METASIZE), 0));
 
-    printf("\nHEAP HEADER    :-- %p\n", HDRP(heap_ptr));
-    printf("HEAP FOOTER      :-- %p\n", FTRP(heap_ptr));
-    printf("HEAP EPILOGUE    :-- %p\n", heap_start + (1 * MB) - 4);
+    PUT(PREV_FP(free_block_init), 0);
+    PUT(NEXT_FP(free_block_init), 0);
 
-    //set alloc algorithm type
+    /* set root free ptr */
+    root_ptr = free_block_init;
+
+    /* set alloc algorithm type */
     FIND_T_FLAG = allocAlg;
 
-    printf("\nHEAP PTR STARTING AT   :-- %p\n", heap_ptr);
-    printf("ROOT PTR STARTING AT     :-- %p\n", root_ptr);
-    printf("ALLOC ALG                :-- %d\n", FIND_T_FLAG); 
+    /* debug */
+    printf("ALLOC ALGORITHM: %d\n", allocAlg);
+    printf("\nROOT PTR :-- %p\n", root_ptr);
+
+    printf("\n<HEAP>\n");
+    printf("\nHEAP HEADER ALIGNMENT   (START) :-- %p\n", heap_ptr);
+    printf("HEAP FOOTER ALIGNMENT   (END)   :-- %p\n", (heap_ptr + (1 * MB)) - (1 * METASIZE));
+    printf("\nHEAP HEADER ADDRESS     :-- %p <--> SIZE: %lu\n", HDRP(heap_ptr + (2 * METASIZE)), GET_SIZE(HDRP(heap_ptr + (2 * METASIZE))));
+    printf("HEAP FOOTER ADDRESS     :-- %p <--> SIZE: %lu\n", FTRP(heap_ptr + (2 * METASIZE)), GET_SIZE(FTRP(heap_ptr + (2 * METASIZE))));
+   
+    printf("\n<FREE BLOCK>\n");
+    printf("\nFREE BLCK HEADER ADDRESS     :-- %p <--> SIZE: %lu\n", HDRP(root_ptr), GET_SIZE(HDRP(root_ptr)));
+    printf("FREE BLCK FOOTER ADDRESS     :-- %p <--> SIZE: %lu\n", FTRP(root_ptr), GET_SIZE(FTRP(root_ptr)));
+       
 }
 
 void mycleanup() 
@@ -127,14 +214,25 @@ void mycleanup()
 }
 
 // void* myrealloc(void* ptr, size_t size);
-// void  myfree(void* ptr);
 
 int main (void) /* testing */
 {
     myinit(0);      /* start, 1MB heap */
 
     /* malloc calls */
-    mymalloc(2);
+    void *data = mymalloc(26);
+    printf("%p\n", data);
+
+    printf("\nPREV_BLKP: %p\n", PREV_BLKP(data));
+    printf("NEXT_BLKP: %p\n", NEXT_BLKP(data));
+
+    printf("%p\n", mymalloc(5));
+
+    printf("\nalloc_prev: %lu\n", GET_ALLOC(FTRP(PREV_BLKP(data))));
+    printf("alloc_next: %lu\n", GET_ALLOC(HDRP(NEXT_BLKP(data))));
+
+    printf("%p\n", mymalloc(90));
+    printf("%p\n", mymalloc(16));
 
     mycleanup();    /* end, cleanup */
 }
