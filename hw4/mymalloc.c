@@ -16,7 +16,9 @@
 
 static char *heap_ptr = NULL;
 static char *root_ptr = NULL;
-static char *heap_start = NULL;
+
+static char *heap_start_bound = NULL;
+static char *heap_end_bound = NULL;
 
 static int FIND_T_FLAG = -1;
 
@@ -64,30 +66,30 @@ static void *find_fit_t (int fit_t, size_t f_size) {
     return NULL; /* no fit found */
 }
 
-static void *coalesce (void *ptr)
-{
-    size_t alloc_prev = GET_ALLOC(FTRP(PREV_BLKP(ptr)));
-    size_t alloc_next = GET_ALLOC(HDRP(NEXT_BLKP(ptr))); 
+// static void *coalesce (void *ptr)
+// {
+//     size_t alloc_prev = GET_ALLOC(FTRP(PREV_BLKP(ptr)));
+//     size_t alloc_next = GET_ALLOC(HDRP(NEXT_BLKP(ptr))); 
 
-    size_t size_curr = GET_SIZE(HDRP(ptr));
+//     size_t size_curr = GET_SIZE(HDRP(ptr));
 
-    if (alloc_prev == 1 && alloc_next == 1) {           /* - C - */
+//     if (alloc_prev == 1 && alloc_next == 1) {           /* - C - */
 
-    } else if (alloc_prev == 0 && alloc_next == 0) {    /* F C F */
+//     } else if (alloc_prev == 0 && alloc_next == 0) {    /* F C F */
 
-    } else if (alloc_prev == 1 && alloc_next == 0) {    /* - C F */
+//     } else if (alloc_prev == 1 && alloc_next == 0) {    /* - C F */
 
-    } else if (alloc_prev == 0 && alloc_next == 1) {    /* F C - */
+//     } else if (alloc_prev == 0 && alloc_next == 1) {    /* F C - */
 
-    }
+//     }
 
-    return NULL;
-}
+//     return NULL;
+// }
 
-static void manage_root_ptr (int toggle, void *ptr) /* toggle (1/0 -:- remove/add) */
-{
-    return;
-}
+// static void manage_root_ptr (int toggle, void *ptr) /* toggle (1/0 -:- remove/add) */
+// {
+//     return;
+// }
 
 
 /* ----------------------- MEMORY MANAGEMENT FUNCTIONS ---------------------- */
@@ -170,6 +172,9 @@ void myinit(int allocAlg)
         exit(EXIT_FAILURE);
     }
 
+    heap_start_bound = heap_ptr;
+    heap_end_bound = heap_ptr + (1 * MB);
+
     /* heap header + footer */
     PUT(heap_ptr, 0);
     PUT(heap_ptr + (1 * METASIZE), PACK(0, 1));  
@@ -205,11 +210,12 @@ void myinit(int allocAlg)
     printf("\nFREE BLCK HEADER ADDRESS     :-- %p <--> SIZE: %lu\n", HDRP(root_ptr), GET_SIZE(HDRP(root_ptr)));
     printf("FREE BLCK FOOTER ADDRESS     :-- %p <--> SIZE: %lu\n", FTRP(root_ptr), GET_SIZE(FTRP(root_ptr)));
        
+    printf("\nHEAP BOUNDARY  :-- (START) %p :-- (END) %p\n", heap_start_bound, heap_end_bound);
 }
 
 void mycleanup() 
 {
-    free(heap_start);
+    free(heap_start_bound);
     exit(EXIT_SUCCESS);
 }
 
