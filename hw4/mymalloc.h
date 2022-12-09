@@ -16,8 +16,6 @@
 /* ----------------------------- MACRO + DEFINES ---------------------------- */
 
 
-/* Basic macros sourced from Computer Systems, A Programmer’s Perspective (9.9) */
-
 /* H/F size and alignment */
 #define METASIZE (sizeof(size_t)) /* Word and header/footer size (bytes) */
 #define DSIZE 8 /* Double word size (bytes) */
@@ -33,20 +31,20 @@
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 /* Given block ptr bp, compute address of its header and footer */
-#define HDRP(bp) ((void *)(bp) - METASIZE)
-#define FTRP(bp) ((void *)(bp) + GET_SIZE(HDRP(bp)))
+#define HDRP(bp) ((char *)(bp) - METASIZE)
+#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp) ((void *)(bp) + (GET_SIZE(HDRP(bp)) + (2 * METASIZE)))
-#define PREV_BLKP(bp) ((void *)(bp) - (GET_SIZE((void *)(bp) - (2 * METASIZE)) + (2 * METASIZE)))
+#define NEXT_BLKP(bp) ((char *)(bp) + (GET_SIZE(HDRP(bp)) + (2 * METASIZE)))
+#define PREV_BLKP(bp) ((char *)(bp) - (GET_SIZE((char *)(bp) - (2 * METASIZE)) + (2 * METASIZE)))
 
 /* My macros */
 #define MB (256) //(1024 * 1024) Test :-- 256
 #define ALIGNMENT 8
 #define MINBLOCK 32
 
-#define NEXT_FP(p) ((void *)(p + METASIZE))
-#define PREV_FP(p) ((void *)(p))
+#define NEXT_FP(p)  (*(char **)((char *)(p) + METASIZE))
+#define PREV_FP(p)  (*(char **)((char * )(p)))
 
 #define ALIGN(size) (((size + ALIGNMENT - 1) / ALIGNMENT) * ALIGNMENT)
 
@@ -59,7 +57,7 @@ void  mycleanup();
 
 void* mymalloc(size_t size);
 // void* myrealloc(void* ptr, size_t size);
-// void  myfree(void* ptr);
+void myfree(void* ptr);
 
 
 #endif 
