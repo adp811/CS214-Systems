@@ -65,14 +65,14 @@ static void print_free_list (void *ptr)
     }
 
     ptr = root_ptr;
-    printf("\n[FREE LIST]\n");
+    printf("\n\n ### [FREE LIST] ### \n");
 
     while (ptr != NULL) {
         print_block(ptr);
         ptr = NEXT_FP(ptr);
     }
 
-    printf("\n\n[END OF FREE LIST]\n");
+    printf("\n\n ### [END OF FREE LIST] ### \n\n");
 
     return;
 }
@@ -86,18 +86,18 @@ static void print_heap_mem ()
 
     void *ptr = heap_start_bound + (2 * METASIZE);
 
-    printf("\n[HEAP MEMORY] <|> (HDR) :- [%p ~ %lu ~ %c] <|> (FTR) :- [%p ~ %lu ~ %c]\n", 
+    printf("\n\n $$$ [HEAP MEMORY] <|> (HDR) :- [%p ~ %lu ~ %c] <|> (FTR) :- [%p ~ %lu ~ %c] $$$ \n", 
         HDRP(ptr), GET_SIZE(HDRP(ptr)), GET_ALLOC(HDRP(ptr)) ? 'A' : 'F',
         FTRP(ptr), GET_SIZE(FTRP(ptr)), GET_ALLOC(FTRP(ptr)) ? 'A' : 'F');
 
     ptr = NEXT_BLKP(ptr);
 
-    while (ptr != NULL && ptr != heap_end_bound) {
+    while (ptr != NULL && ptr != (heap_end_bound - (1 *  METASIZE))) {
         print_block(ptr);
         ptr = NEXT_BLKP(ptr);
     }   
 
-    printf("\n\n[END OF HEAP MEMORY]\n");
+    printf("\n\n $$$ [END OF HEAP MEMORY] $$$ \n\n");
 
     return;
 }
@@ -112,8 +112,9 @@ static void *find_fit_t (int fit_t, size_t f_size) {
 
             bp = root_ptr;    
 
-            while(GET_ALLOC(HDRP(bp)) != 1) {
-                if(f_size <= GET_SIZE(HDRP(bp))) return bp;
+            while(bp != NULL && GET_ALLOC(HDRP(bp)) != 1) {
+                size_t bp_size = GET_SIZE(HDRP(bp));
+                if(f_size <= bp_size) return bp;
                 else bp = NEXT_FP(bp);
             }  
                 
@@ -129,21 +130,51 @@ static void *find_fit_t (int fit_t, size_t f_size) {
 
 static void *coalesce (void *ptr)
 {
-    size_t alloc_prev = GET_ALLOC(FTRP(PREV_BLKP(ptr)));
-    size_t alloc_next = GET_ALLOC(HDRP(NEXT_BLKP(ptr))); 
+    void *prev = PREV_BLKP(ptr);
+    void *next = NEXT_BLKP(ptr);
 
-    //size_t size_curr = GET_SIZE(HDRP(ptr));
-
-    if (alloc_prev == 1 && alloc_next == 1) {           /* [ - C - ] */
-        printf("\n(%lu) C (%lu)  <-->  (COALESCE FAIL) ATTEMPTING INSERT AT BEGINNING OF FREE LIST", alloc_prev, alloc_next);
+    if (GET_ALLOC(FTRP(prev)) == 1 && GET_ALLOC(HDRP(next)) == 1) {           /* [ - C - ] */
+        printf("\n(-) C (-)  <-->  (COALESCE FAIL) ATTEMPTING INSERT AT BEGINNING OF FREE LIST");
         manage_root_ptr(1, ptr);
 
-    } else if (alloc_prev == 0 && alloc_next == 0) {    /* F C F */
+    } else if (GET_ALLOC(FTRP(prev)) == 0 && GET_ALLOC(FTRP(next)) == 0) {    /* F C F */
+        printf("\n(F) C (F)  <-->  (COALESCE) MERGING WITH PREV AND NEXT BLOCKS");
 
-    } else if (alloc_prev == 1 && alloc_next == 0) {    /* - C F */
+        manage_root_ptr(0, prev);
+        manage_root_ptr(0, next);
 
-    } else if (alloc_prev == 0 && alloc_next == 1) {    /* F C - */
+        size_t merged_size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prev)) + GET_SIZE(HDRP(next)) + (4 * METASIZE);
 
+        PUT(HDRP(prev), PACK(merged_size, 0));
+        PUT(FTRP(next), PACK(merged_size, 0));
+
+        ptr = prev;
+        manage_root_ptr(1, ptr);
+
+    } else if (GET_ALLOC(FTRP(prev)) == 1 && GET_ALLOC(FTRP(next)) == 0) {    /* - C F */
+        printf("\n(-) C (F)  <-->  (COALESCE) MERGING WITH NEXT BLOCK");
+
+        manage_root_ptr(0, next);  
+
+        size_t merged_size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(next)) + (2 * METASIZE);  
+
+        PUT(HDRP(ptr), PACK(merged_size, 0));
+        PUT(FTRP(ptr), PACK(merged_size, 0));
+
+        manage_root_ptr(1, ptr);
+
+    } else if (GET_ALLOC(FTRP(prev)) == 0 && GET_ALLOC(FTRP(next)) == 1) {    /* F C - */
+        printf("\n(F) C (-)  <-->  (COALESCE) MERGING WITH PREV BLOCK");
+
+        manage_root_ptr(0, prev);
+
+        size_t merged_size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prev)) + (2 * METASIZE); 
+
+        PUT(HDRP(prev), PACK(merged_size, 0));
+        PUT(FTRP(ptr), PACK(merged_size, 0));
+
+        ptr = prev;
+        manage_root_ptr(1, ptr);
     }
 
     return NULL;
@@ -212,26 +243,21 @@ void* mymalloc(size_t size)
     if (size <= DSIZE) aligned_size = 2 * DSIZE;
     else aligned_size = ALIGN(size);
 
-    printf("\n\n\nALIGNED SIZE :-- %zu\n", aligned_size);
+    printf("ALIGNED SIZE %lu\n", aligned_size);
 
     bp = find_fit_t(FIND_T_FLAG, aligned_size);
 
     if (bp != NULL) {
 
         size_t block_size = GET_SIZE(HDRP(bp));
-
-        //printf("\nFIT BLOCK ADR :-- %p <--> SIZE: %lu\n", bp, block_size);
+        print_block(bp);
 
         if ((block_size - aligned_size) >= MINBLOCK) { /* split */
 
             PUT(HDRP(bp), PACK(aligned_size, 1));
             PUT(FTRP(bp), PACK(aligned_size, 1));
 
-            printf("\nPLACED AT BLOCK :-- %p <--> TAGS: [HDR: %p, FTR: %p] <--> SIZE: [HDR: %lu, FTR: %lu]\n",
-                bp, HDRP(bp), FTRP(bp), GET_SIZE(HDRP(bp)), GET_SIZE(FTRP(bp)));
-
             manage_root_ptr(0, bp);
-            printf("\nROOT PTR :-- %p\n", root_ptr);
             
             void *n_bp = NEXT_BLKP(bp);
 
@@ -240,25 +266,19 @@ void* mymalloc(size_t size)
 
             coalesce(n_bp);
 
-            printf("\nNEXT FREE BLOCK :-- %p <--> TAGS: [HDR: %p, FTR: %p] <--> SIZE: [HDR: %lu, FTR: %lu] <--> [NEXT_FP: %p, PREV_FP: %p]\n",
-                n_bp, HDRP(n_bp), FTRP(n_bp), GET_SIZE(HDRP(n_bp)), GET_SIZE(FTRP(n_bp)), NEXT_FP(n_bp), PREV_FP(n_bp));
-        
         } else {
+
+            printf("\nCANT SPLIT\n");
 
             PUT(HDRP(bp), PACK(block_size, 1));
             PUT(FTRP(bp), PACK(block_size, 1));
 
-            printf("\nPLACED AT BLOCK :-- %p <--> TAGS: [HDR: %p, FTR: %p] <--> SIZE: [HDR: %lu, FTR: %lu]\n",
-                bp, HDRP(bp), FTRP(bp), GET_SIZE(HDRP(bp)), GET_SIZE(FTRP(bp)));
-
             manage_root_ptr(0, bp);
-            printf("\nROOT PTR :-- %p\n", root_ptr);
-
         }
 
     } else return NULL;
 
-    return bp; /* testing */
+    return bp;
 }
 
 void myfree(void *ptr)
@@ -271,7 +291,6 @@ void myfree(void *ptr)
     PUT(HDRP(ptr), PACK(block_size, 0));
     PUT(FTRP(ptr), PACK(block_size, 0));
 
-    printf("\nBLOCK FREED :-- %p\n", ptr);
     coalesce(ptr);
 }
 
@@ -291,14 +310,17 @@ void myinit(int allocAlg)
     /* heap header + footer */
     PUT(heap_ptr, 0);
     PUT(heap_ptr + (1 * METASIZE), PACK(0, 1));  
-    PUT(heap_ptr + (2 * METASIZE), PACK(0, 1));                                                   
-    PUT(heap_ptr + ((1 * MB) - (1 * METASIZE)), PACK(0, 1));  
+    PUT(heap_ptr + (2 * METASIZE), PACK(0, 1)); 
 
+    /* heap epilogue */
+    PUT(heap_ptr + ((1 * MB) - (2 * METASIZE)), PACK(0, 1));  
+    PUT(heap_ptr + ((1 * MB) - (1 * METASIZE)), PACK(0, 1));  
+    
     /* init free block */
     void *free_block_init = NEXT_BLKP(heap_ptr + (2 * METASIZE));
     
-    PUT(HDRP(free_block_init), PACK((1 * MB) - (6 * METASIZE), 0));
-    PUT(FTRP(free_block_init), PACK((1 * MB) - (6 * METASIZE), 0));
+    PUT(HDRP(free_block_init), PACK((1 * MB) - (7 * METASIZE), 0));
+    PUT(FTRP(free_block_init), PACK((1 * MB) - (7 * METASIZE), 0));
 
     PREV_FP(free_block_init) = NULL;
     NEXT_FP(free_block_init) = NULL;
@@ -315,10 +337,12 @@ void myinit(int allocAlg)
 
     printf("\n<HEAP>\n");
     printf("\nHEAP HEADER ALIGNMENT   (START) :-- %p\n", heap_ptr);
-    printf("HEAP FOOTER ALIGNMENT   (END)   :-- %p\n", (heap_ptr + (1 * MB)) - (1 * METASIZE));
     printf("\nHEAP HEADER ADDRESS     :-- %p <--> SIZE: %lu\n", HDRP(heap_ptr + (2 * METASIZE)), GET_SIZE(HDRP(heap_ptr + (2 * METASIZE))));
     printf("HEAP FOOTER ADDRESS     :-- %p <--> SIZE: %lu\n", FTRP(heap_ptr + (2 * METASIZE)), GET_SIZE(FTRP(heap_ptr + (2 * METASIZE))));
    
+    printf("\nHEAP EPILOGUE HEADER  (END)   :-- %p\n", (heap_ptr + (1 * MB)) - (2 * METASIZE));
+    printf("HEAP EPILOGUE FOOTER    (END)   :-- %p\n", (heap_ptr + (1 * MB)) - (1 * METASIZE));
+
     printf("\n<FREE BLOCK>\n");
     printf("\nFREE BLOCK HEADER ADDRESS     :-- %p <--> SIZE: %lu\n", HDRP(root_ptr), GET_SIZE(HDRP(root_ptr)));
     printf("FREE BLOCK FOOTER ADDRESS     :-- %p <--> SIZE: %lu\n", FTRP(root_ptr), GET_SIZE(FTRP(root_ptr)));
@@ -339,25 +363,56 @@ int main (void) /* testing */
     myinit(0);      /* start, 1MB heap */
 
     /* malloc calls */
-    void *data1 = mymalloc(26);
-    void *data2 = mymalloc(5);
-    void *data3 = mymalloc(90);
-    void *data4 = mymalloc(16);
+    void *data1 = mymalloc(16);
+    void *data2 = mymalloc(32);
+    void *data3 = mymalloc(16);
+    void *data4 = mymalloc(32);
+    void *data5 = mymalloc(40);
+
+    // printf("\nALLOCED: ");
+    // printf("\n%p", data1);
+    // printf("\n%p", data2);
+    // printf("\n%p", data3);
+    // printf("\n%p", data4);
+    // printf("\n%p\n", data5);
+
+    printf("\n\n\n\n");
+
+    print_heap_mem();
+    myfree(data1);
+
+    print_heap_mem();
+    myfree(data3);
+
+    print_heap_mem();
+    myfree(data2);
+
+    print_heap_mem();
+
+    mymalloc(2);
+    mymalloc(3);
+    mymalloc(1);
+
+    print_heap_mem();
+
+    printf("\n\n\n\n");
+
+    print_free_list(root_ptr);
+
+    // data1 = mymalloc(26);
+    // data2 = mymalloc(5);
+    // data3 = mymalloc(90);
+    // data4 = mymalloc(16);
+
+    // print_heap_mem();
+    // print_free_list(root_ptr);
 
     printf("\nALLOCED: ");
     printf("\n%p", data1);
     printf("\n%p", data2);
     printf("\n%p", data3);
-    printf("\n%p\n", data4);
-
-    print_heap_mem();
-
-    myfree(data2);
-    myfree(data4);
-
-    print_free_list(root_ptr);
-
-    print_heap_mem();
-
+    printf("\n%p", data4);
+    printf("\n%p", data5);
+ 
     mycleanup();    /* end, cleanup */
 }
