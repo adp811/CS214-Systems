@@ -22,6 +22,7 @@ static int FIND_T_FLAG = -1;
 static void *find_fit_t (int fit_t, size_t f_size);
 static void manage_root_ptr (int toggle, void *ptr);
 static void PUT_HF (void *ptr_hdr, void *ptr_footer, size_t size, int alloc);
+static size_t align_size (size_t alloc_size);
 
 static void print_block (void *ptr);
 static void print_free_list (void *ptr);
