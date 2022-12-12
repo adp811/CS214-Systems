@@ -11,10 +11,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <string.h>
 
 /* ----------------------------- MACRO + DEFINES ---------------------------- */
 
+/* Find maximum between two values */
+#define MAX(x, y) ((x) > (y)? (x) : (y))
 
 /* H/F size and alignment */
 #define METASIZE (sizeof(size_t)) /* Word and header/footer size (bytes) */
@@ -39,25 +41,20 @@
 #define PREV_BLKP(bp) ((char *)(bp) - (GET_SIZE((char *)(bp) - (2 * METASIZE)) + (2 * METASIZE)))
 
 /* My macros */
-#define MB (256) //(1024 * 1024) Test :-- 256
+#define MB (384) //(1024 * 1024) Test :-- 256
 #define ALIGNMENT 8
 #define MINBLOCK 32
 
 #define NEXT_FP(p)  (*(char **)((char *)(p) + METASIZE))
 #define PREV_FP(p)  (*(char **)((char * )(p)))
 
-#define ALIGN(size) (((size + ALIGNMENT - 1) / ALIGNMENT) * ALIGNMENT)
-
-
 /* -------------------------------- FUNCTIONS PROTOTYPES------------------------------- */
 
+void* mymalloc (size_t size);
+void* myrealloc (void* ptr, size_t size);
+void  myfree (void* ptr);
 
-void  myinit(int allocAlg);
-void  mycleanup();
-
-void* mymalloc(size_t size);
-// void* myrealloc(void* ptr, size_t size);
-void myfree(void* ptr);
-
+void  myinit (int allocAlg);
+void  mycleanup ();
 
 #endif 

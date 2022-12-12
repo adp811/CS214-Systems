@@ -1,5 +1,5 @@
 OUTPUT=mymalloc
-CFLAGS=-g -Wall -Wvla -Werror -fsanitize=address
+CFLAGS=-g -Wall -Wvla -Werror -Wno-unused-function -fsanitize=address
 LFLAGS=-lm
 
 %: %.c %.h
