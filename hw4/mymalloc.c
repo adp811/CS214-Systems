@@ -22,6 +22,7 @@ static int FIND_T_FLAG = -1;
 static void *find_fit_t (int fit_t, size_t f_size);
 static void manage_root_ptr (int toggle, void *ptr);
 static void PUT_HF (void *ptr_hdr, void *ptr_footer, size_t size, int alloc);
+
 static size_t align_size (size_t alloc_size);
 
 static void print_block (void *ptr);
@@ -356,7 +357,7 @@ void* mymalloc (size_t size)
     void *bp = NULL;
 
     /* return if no free blocks available */
-    if (root_ptr == NULL) return bp;
+    if (size == 0 || root_ptr == NULL) return bp;
      
     /* align allocation size */
     size_t aligned_size = align_size(size);
@@ -432,9 +433,9 @@ void *myrealloc (void *ptr, size_t size)
 
         if (GET_ALLOC(HDRP(n_bp)) == 0 && ((n_bp_size + old_size) >= new_size /* 40 */)) { /* neighbor block free and within size */
             /* remove neighbor block from free list and allocate */
-            if (((n_bp_size + old_size) - new_size) >= MINBLOCK) { /* split and allocate block */ // 152 - 40 = 112
-                PUT_HF(ptr, ptr, new_size, 1);
+            if (((n_bp_size + old_size) - new_size) >= MINBLOCK) { /* split and allocate block */
                 manage_root_ptr(0, n_bp);
+                PUT_HF(ptr, ptr, new_size, 1);
 
                 void *n_bp_2 = NEXT_BLKP(ptr);
                 PUT_HF(n_bp_2, n_bp_2, ((n_bp_size + old_size) - new_size), 0);
@@ -471,7 +472,7 @@ void myinit(int allocAlg)
     FIND_T_FLAG = allocAlg;
 
     /* uncomment for debugging */
-    print_heap_info();
+    // print_heap_info();
 }
 
 void myreset(int allocAlg)
@@ -484,89 +485,4 @@ void mycleanup()
 {
     free(heap_start_bound);
     exit(EXIT_SUCCESS);
-}
-
-int main (void) /* testing */
-{
-    myinit(0);      /* start, 1MB heap */
-
-    /* malloc calls */
-    void *data1 = mymalloc(16);
-    void *data2 = mymalloc(24);
-    void *data3 = myrealloc(NULL, 32);
-    void *data4 = myrealloc(NULL, 40);
-    void *data5 = myrealloc(NULL, 48);
-    void *data6 = myrealloc(NULL, 56);
-    void *data7 = myrealloc(NULL, 16);
-
-    printf("\n\nROVING ROOT :-- %p\n\n", roving_root_ptr);
-
-    print_heap_mem();   
-    print_free_list(root_ptr);
-    printf("\n\n\n\n");
-
-    myfree(data2);
-    myfree(data4);
-    myfree(data6);
-
-    print_heap_mem();   
-    print_free_list(root_ptr);
-    printf("\n\n\n\n");
-
-    mymalloc(16);
-
-    print_heap_mem();   
-    print_free_list(root_ptr);
-    printf("\n\n\n\n");
-
-    printf("ALLOCED: ");
-    printf("\n%p", data1);
-    printf("\n%p", data2);
-    printf("\n%p", data3);
-    printf("\n%p", data4);
-    printf("\n%p", data5);
-    printf("\n%p", data6);
-    printf("\n%p", data7);
-
-    myreset(2);
-
-    /* malloc calls */
-    data1 = mymalloc(16);
-    data2 = mymalloc(24);
-    data3 = myrealloc(NULL, 32);
-    data4 = myrealloc(NULL, 40);
-    data5 = myrealloc(NULL, 48);
-    data6 = myrealloc(NULL, 56);
-    data7 = myrealloc(NULL, 16);
-
-    printf("\n\nROVING ROOT :-- %p\n\n", roving_root_ptr);
-
-    print_heap_mem();   
-    print_free_list(root_ptr);
-    printf("\n\n\n\n");
-
-    myfree(data2);
-    myfree(data4);
-    myfree(data6);
-
-    print_heap_mem();   
-    print_free_list(root_ptr);
-    printf("\n\n\n\n");
-
-    mymalloc(16);
-
-    print_heap_mem();   
-    print_free_list(root_ptr);
-    printf("\n\n\n\n");
-
-    printf("ALLOCED: ");
-    printf("\n%p", data1);
-    printf("\n%p", data2);
-    printf("\n%p", data3);
-    printf("\n%p", data4);
-    printf("\n%p", data5);
-    printf("\n%p", data6);
-    printf("\n%p", data7);
-
-    mycleanup();  /* end cleanup */
 }

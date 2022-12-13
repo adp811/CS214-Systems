@@ -44,7 +44,7 @@
 #define PREV_FP(p)  (*(char **)((char * )(p)))
 
 /* Size and alignment */
-#define MB (384) //(1024 * 1024) Test :-- 256
+#define MB (1024 * 1024) // Test :-- 256
 #define ALIGNMENT 8
 #define MINBLOCK 32
 
