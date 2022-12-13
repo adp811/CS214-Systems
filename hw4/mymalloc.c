@@ -182,6 +182,8 @@ static size_t align_size (size_t alloc_size)
 static void *find_fit_t (int fit_t, size_t f_size)
 {
     void *bp = NULL;
+    void *best_fit = NULL;
+
     switch (fit_t) {
     
         case 0: /* first fit algorithm */
@@ -195,10 +197,61 @@ static void *find_fit_t (int fit_t, size_t f_size)
             break;
         
         case 1: /* next fit algorithm */
-            printf("%p\n", roving_root_ptr);
+           
+            if (roving_root_ptr == NULL) bp = root_ptr;
+            else bp = roving_root_ptr;
+
+            /* search from roving ptr to end of free list */
+            while(bp != NULL && GET_ALLOC(HDRP(bp)) != 1) {
+                printf("\n\nEXAMINING NF AFTER :-- %p\n\n", bp);
+                size_t bp_size = GET_SIZE(HDRP(bp));
+                if(f_size <= bp_size) {
+                    roving_root_ptr = NEXT_FP(bp);
+                    return bp;
+                } else bp = NEXT_FP(bp);
+            } 
+
+            bp = root_ptr;
+
+            /* search from start of free list to roving ptr */
+            while(bp != roving_root_ptr && bp != NULL && GET_ALLOC(HDRP(bp)) != 1) {
+                printf("\n\nEXAMINING NF BEFORE :-- %p\n\n", bp);
+                size_t bp_size = GET_SIZE(HDRP(bp));
+                if(f_size <= bp_size) {
+                    roving_root_ptr = NEXT_FP(bp);
+                    return bp;
+                } else bp = NEXT_FP(bp);
+            }
+
             break;
         
         case 2: /* best fit algorithm */
+
+            bp = root_ptr;
+            while(bp != NULL && GET_ALLOC(HDRP(bp)) != 1) {
+                size_t bp_size = GET_SIZE(HDRP(bp));
+                if(f_size <= bp_size) {
+                    size_t leftover_bytes = bp_size - f_size;
+                    if (leftover_bytes == 0) {
+                        return bp;
+                    } else {
+                        if(best_fit == NULL) {
+                            best_fit = bp;
+                            bp = NEXT_FP(bp);
+           
+                        } else {
+                            if(leftover_bytes < (GET_SIZE(HDRP(best_fit)) - f_size)) {
+                                best_fit = bp;
+                            } else {
+                                bp = NEXT_FP(bp);
+                            }
+                        }
+                    }
+
+                } else bp = NEXT_FP(bp);
+            }  
+
+            return best_fit;
             break;
 
         default:
@@ -224,6 +277,7 @@ static void *coalesce (void *ptr)
         manage_root_ptr(0, next);
         size_t merged_size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(prev)) + GET_SIZE(HDRP(next)) + (4 * METASIZE);
         PUT_HF(prev, next, merged_size, 0);
+        if (roving_root_ptr == next) roving_root_ptr = prev;
         ptr = prev;
         manage_root_ptr(1, ptr);
 
@@ -232,6 +286,7 @@ static void *coalesce (void *ptr)
         manage_root_ptr(0, next);  
         size_t merged_size = GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(next)) + (2 * METASIZE);  
         PUT_HF(ptr, ptr, merged_size, 0);
+        if (roving_root_ptr == next) roving_root_ptr = ptr;
         manage_root_ptr(1, ptr);
 
     } else if (GET_ALLOC(FTRP(prev)) == 0 && GET_ALLOC(FTRP(next)) == 1) {    /* [FREE <-> CURR <-> ALLOC] */
@@ -411,12 +466,18 @@ void myinit(int allocAlg)
 {
     /* set root free ptr */
     root_ptr = init_heap();
-
+    
     /* set alloc algorithm type */
     FIND_T_FLAG = allocAlg;
 
     /* uncomment for debugging */
     print_heap_info();
+}
+
+void myreset(int allocAlg)
+{    
+    free(heap_start_bound);
+    myinit(allocAlg);
 }
 
 void mycleanup() 
@@ -431,33 +492,30 @@ int main (void) /* testing */
 
     /* malloc calls */
     void *data1 = mymalloc(16);
-    void *data2 = mymalloc(16);
-    void *data3 = myrealloc(NULL, 16);
-    void *data4 = myrealloc(NULL, 16);
-    void *data5 = myrealloc(NULL, 16);
-    void *data6 = myrealloc(NULL, 16);
+    void *data2 = mymalloc(24);
+    void *data3 = myrealloc(NULL, 32);
+    void *data4 = myrealloc(NULL, 40);
+    void *data5 = myrealloc(NULL, 48);
+    void *data6 = myrealloc(NULL, 56);
     void *data7 = myrealloc(NULL, 16);
-    void *data8 = myrealloc(NULL, 16);
-    void *data9 = myrealloc(NULL, 16);
-    void *data10 = myrealloc(NULL, 40);
-    
+
+    printf("\n\nROVING ROOT :-- %p\n\n", roving_root_ptr);
+
     print_heap_mem();   
+    print_free_list(root_ptr);
     printf("\n\n\n\n");
-    
-    myfree(data5);
-    myfree(data4);
-    myfree(data6);
-    myfree(data3);
-    myfree(data7);
-    myfree(data1);
-    myfree(data10);
 
     myfree(data2);
-    myfree(data8);
-    myfree(data9);;
+    myfree(data4);
+    myfree(data6);
 
     print_heap_mem();   
+    print_free_list(root_ptr);
     printf("\n\n\n\n");
+
+    mymalloc(16);
+
+    print_heap_mem();   
     print_free_list(root_ptr);
     printf("\n\n\n\n");
 
@@ -469,9 +527,46 @@ int main (void) /* testing */
     printf("\n%p", data5);
     printf("\n%p", data6);
     printf("\n%p", data7);
-    printf("\n%p", data8);
-    printf("\n%p", data9);
-    printf("\n%p", data10);
- 
+
+    myreset(2);
+
+    /* malloc calls */
+    data1 = mymalloc(16);
+    data2 = mymalloc(24);
+    data3 = myrealloc(NULL, 32);
+    data4 = myrealloc(NULL, 40);
+    data5 = myrealloc(NULL, 48);
+    data6 = myrealloc(NULL, 56);
+    data7 = myrealloc(NULL, 16);
+
+    printf("\n\nROVING ROOT :-- %p\n\n", roving_root_ptr);
+
+    print_heap_mem();   
+    print_free_list(root_ptr);
+    printf("\n\n\n\n");
+
+    myfree(data2);
+    myfree(data4);
+    myfree(data6);
+
+    print_heap_mem();   
+    print_free_list(root_ptr);
+    printf("\n\n\n\n");
+
+    mymalloc(16);
+
+    print_heap_mem();   
+    print_free_list(root_ptr);
+    printf("\n\n\n\n");
+
+    printf("ALLOCED: ");
+    printf("\n%p", data1);
+    printf("\n%p", data2);
+    printf("\n%p", data3);
+    printf("\n%p", data4);
+    printf("\n%p", data5);
+    printf("\n%p", data6);
+    printf("\n%p", data7);
+
     mycleanup();  /* end cleanup */
 }
